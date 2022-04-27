@@ -22,6 +22,7 @@ function isJson(str) {
 
 function addCircleHandler() {
     const obj = {
+        id: getUniqueID(),
         radius: randomNumber(),
         fill: randomColor(),
         left: randomNumber(),
@@ -33,11 +34,12 @@ function addCircleHandler() {
 
 function addRectangleHandler() {
     var obj = {
+        id: getUniqueID(),
         width: randomNumber(),
         height: randomNumber(),
         fill: randomColor(),
         left: randomNumber(),
-        top: randomNumber()
+        top: randomNumber(),
     };
     addObject('Rectangle', obj);
     sendObject('Rectangle', obj);
@@ -45,6 +47,7 @@ function addRectangleHandler() {
 
 function addTriangleHandler() {
     var obj = {
+        id: getUniqueID(),
         width: randomNumber(),
         height: randomNumber(),
         fill: randomColor(),
@@ -79,23 +82,45 @@ function onMessageFromServer(message) {
     if (isJson(message.data)) {
         var obj = JSON.parse(message.data);
         console.log("got data from server");
+
         var shapes = JSON.parse(message.data);
-        fabric.util.enlivenObjects(shapes.objects, function (enlivenedObjects) {
-            enlivenedObjects.forEach(function (obj, index) {
-                console.log('canvas.add(obj): ' + obj);
-                canvas.add(obj);
-            });
+
+        var ul = document.getElementById("clients");
+        ul.innerHTML = '';
+        shapes.clientsId.forEach(showClients);
+
+        var listObjects = canvas.getObjects();
+
+        if(listObjects.filter(function(e) { return e.id === shapes.objects[0].id; }).length > 0){
+            console.log("Ha sido un movimiento de objetos");
+            elementIndex = listObjects.findIndex((elemento => elemento.id == shapes.objects[0].id));
+
+            //Actualizamos la posicion del objeto del canvas
+            canvas.getObjects()[elementIndex].setLeft(shapes.objects[0].left);
+            canvas.getObjects()[elementIndex].setTop(shapes.objects[0].top);
             canvas.renderAll();
-        });
-        //añadimos el objeto
+        }else{
+            console.log("Ha sido una creaccion de objetos");
+            if (shapes.objects.length != 0) {
+                fabric.util.enlivenObjects(shapes.objects, function (enlivenedObjects) {
+                    enlivenedObjects.forEach(function (obj, index) {
+                        canvas.add(obj);
+                    });
+                    canvas.renderAll();
+                });
+            }
+        }
     }
 }
 
+function showClients(cl) {
+    var ul = document.getElementById("clients");
+    var li = document.createElement("li");
+    li.appendChild(document.createTextNode(cl));
+    ul.appendChild(li);
+}
+
 function addObject(type, obj) {
-    console.log("add");
-    console.log(type);
-    console.log(obj);
-    console.log(canvas);
     var shape;
     if (type == 'Triangle') {
         shape = new fabric.Triangle(obj);
@@ -106,25 +131,20 @@ function addObject(type, obj) {
     else if (type == 'Circle') {
         shape = new fabric.Circle(obj);
     }
-    //Put the shape on the Canvas
-    console.log("shape: " + JSON.stringify(shape));
     canvas.add(shape)
 }
 
 function sendObject() {
     //No se puede mandar todo el canvas solo el objeto en cuestion 
-    console.log("Enviamos datos al servidor");
-    console.log("Objetos del canvas" + JSON.stringify(canvas.getObjects()));
-
-
     var listObjects = canvas.getObjects();
-    console.log("listObjects" + listObjects);
 
-    var lastObject = listObjects[listObjects.length-1];
-    console.log("lastObject" + lastObject);
-    console.log("JSON.stringify(lastObject)" + JSON.stringify(lastObject));
-    //Enviamos el Json como string. SOlo el ultimo objeto creado
-    websocket.send(JSON.stringify(lastObject));
+    var lastObject = listObjects[listObjects.length - 1];
+
+    //Lo convertimos en un objeto generico para agregarle el id
+    var objGenerico = JSON.parse(JSON.stringify(lastObject));
+    objGenerico.id = lastObject.id;
+    console.log("objGenerico" + JSON.stringify(objGenerico));
+    websocket.send(JSON.stringify(objGenerico));
 }
 
 function randomNumber() {
@@ -136,3 +156,31 @@ function randomColor() {
     const index = Math.round(Math.random() * (colores.length - 1));
     return colores[index];
 }
+
+function getUniqueID(){
+    function s4() {
+        return Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
+    }
+    return s4() + s4() + '-' + s4();
+};
+
+window.addEventListener("load", function (event) {
+    var isObjectMoving = false;
+    canvas.on('object:moving', function (event) {
+        isObjectMoving = true;
+    });
+
+    canvas.on('mouse:up', function (event) {
+        if (isObjectMoving) {
+            isObjectMoving = false;
+
+            //Lo convertimos en un objeto generico para agregarle el id
+            var objGenerico = JSON.parse(JSON.stringify(event.target));
+            objGenerico.id = event.target.id;
+
+            console.log("objGenerico" + JSON.stringify(objGenerico));
+            websocket.send(JSON.stringify(objGenerico));
+        }
+    });
+});
+
